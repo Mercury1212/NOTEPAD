@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Notepad — Offline, Multi-Note, Autosave</title>
+<style>
+  :root{
+    --bg: #0f172a;        /* slate-900 */
+    --panel:#111827;      /* gray-900 */
+    --muted:#94a3b8;      /* slate-400 */
+    --text:#e5e7eb;       /* gray-200 */
+    --accent:#22d3ee;     /* cyan-400 */
+    --border:#1f2937;     /* gray-800 */
+    --btn:#1f2937;
+    --btn-hover:#374151;
+    --input-bg: #1f2937;  /* Added for input background in dark mode */
+  }
+  [data-theme="light"]{
+    --bg:#f8fafc;         /* slate-50 */
+    --panel:#ffffff;
+    --muted:#475569;      /* slate-600 */
+    --text:#0f172a;
+    --accent:#0891b2;     /* cyan-700 */
+    --border:#e5e7eb;
+    --btn:#f1f5f9;
+    --btn-hover:#e2e8f0;
+    --input-bg: #ffffff;  /* Added for input background in light mode */
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+  }
+  .app{
+    display:grid; grid-template-columns: 280px 1fr; grid-template-rows: 48px 1fr 28px; height:100vh;
+    grid-template-areas:
+      "toolbar toolbar"
+      "sidebar editor"
+      "status  status";
+  }
+  /* Toolbar */
+  .toolbar{
+    grid-area:toolbar; display:flex; gap:8px; align-items:center; padding:8px; border-bottom:1px solid var(--border);
+    background:var(--panel); /* Changed from gradient to solid color */
+    position:sticky; top:0; z-index:2;
+  }
+  .toolbar .group{display:flex; gap:6px; align-items:center}
+  button, .btn{
+    background:var(--btn); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:8px 10px; cursor:pointer; font-weight:600; letter-spacing:.1px;
+  }
+  button:hover{background:var(--btn-hover)}
+  .danger{border-color:#7f1d1d}
+  .accent{border-color:transparent; background:var(--accent); color:#001018}
+  .accent:hover{filter:brightness(0.95)}
+  .spacer{flex:1}
+  .searchbar{
+    display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:6px 8px; min-width:260px;
+  }
+  .searchbar input{
+    background:transparent; border:0; outline:0; color:var(--text); width:100%;
+  }
+  /* Sidebar */
+  .sidebar{
+    grid-area:sidebar; border-right:1px solid var(--border); overflow:auto; background:var(--panel);
+  }
+  .sidehead{display:flex; align-items:center; gap:8px; padding:10px; position:sticky; top:0; background:var(--panel); z-index:1; border-bottom:1px solid var(--border)}
+  .sidehead input{
+    width:100%; border:1px solid var(--border); background:var(--input-bg); color:var(--text); border-radius:8px; padding:8px;
+  }
+  .notes{list-style:none; margin:0; padding:6px}
+  .notes li{
+    display:grid; grid-template-columns: 1fr auto; gap:8px; padding:10px; margin:6px 0; border:1px solid var(--border); border-radius:8px; cursor:pointer;
+  }
+  .notes li.active{outline:2px solid var(--accent)}
+  .note-title{font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .note-meta{font-size:12px; color:var(--muted)}
+  .notes .row{display:flex; gap:6px}
+  /* Editor */
+  .editor{
+    grid-area:editor; display:flex; flex-direction:column; height:100%; background:var(--panel); /* Added background */
+  }
+  .titlebar{display:flex; gap:8px; align-items:center; padding:10px; border-bottom:1px solid var(--border); background:var(--panel);}
+  .titlebar input{
+    flex:1; background:var(--input-bg); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:10px; font-weight:700;
+  }
+  textarea{
+    flex:1; width:100%; resize:none; border:0; outline:0; padding:16px;
+    background:var(--input-bg); color:var(--text);
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    tab-size: 2;
+  }
+  /* Status bar */
+  .status{
+    grid-area:status; display:flex; gap:16px; align-items:center; border-top:1px solid var(--border); padding:4px 10px; color:var(--muted);
+    overflow:auto; white-space:nowrap; background:var(--panel); /* Added background */
+  }
+  .tag{padding:2px 8px; border:1px solid var(--border); border-radius:999px; background:var(--input-bg); /* Added background */}
+  /* Dialogs */
+  dialog{
+    border:1px solid var(--border); border-radius:12px; background:var(--panel); color:var(--text);
+    padding:16px; max-width:min(520px, 92vw)
+  }
+  dialog form{display:grid; gap:8px}
+  dialog input, dialog textarea, dialog select{
+    background:var(--input-bg); border:1px solid var(--border); color:var(--text); padding:8px; border-radius:8px
+  }
+  .kbd{border:1px solid var(--border); border-radius:6px; padding:2px 6px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:var(--input-bg);}
+  @media (max-width: 900px){
+    .app{grid-template-columns: 1fr; grid-template-areas:
+      "toolbar" "editor" "status";}
+    .sidebar{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app" data-theme="dark">
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="group">
+      <button id="btnNew" title="New note (Ctrl+N)">New</button>
+      <button id="btnDelete" class="danger" title="Delete note (Del)">Delete</button>
+      <button id="btnPrint" title="Print (Ctrl+P)">Print</button>
+    </div>
+    <div class="group">
+      <button id="btnOpen" title="Open .txt">Open</button>
+      <input id="fileOpen" type="file" accept=".txt,text/plain" hidden />
+      <button id="btnSaveFile" class="accent" title="Save as .txt (Ctrl+S)">Save</button>
+      <!-- NEW: Save As button (added only) -->
+      <button id="btnSaveAs" title="Save As…">Save As</button>
+      <button id="btnExportAll" title="Export all notes (.json)">Export All</button>
+      <button id="btnImportAll" title="Import notes (.json)">Import</button>
+      <input id="fileImport" type="file" accept="application/json" hidden />
+    </div>
+    <div class="spacer"></div>
+    <div class="searchbar" title="Find (Ctrl+F) / Replace (Ctrl+H)">
+      <input id="findInput" placeholder="Find…" />
+      <button id="btnFindPrev">↑</button>
+      <button id="btnFindNext">↓</button>
+      <button id="btnReplace">Replace</button>
+      <button id="btnClearSearch">✕</button>
+    </div>
+    <div class="group">
+      <button id="btnTheme" title="Toggle theme (Ctrl+J)">Theme</button>
+      <button id="btnAbout" title="About & Shortcuts">?</button>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidehead">
+      <input id="filterNotes" placeholder="Filter notes…" />
+      <button id="btnAddNote">＋</button>
+    </div>
+    <ul class="notes" id="notesList"></ul>
+  </aside>
+
+  <!-- Editor -->
+  <main class="editor">
+    <div class="titlebar">
+      <input id="title" placeholder="Untitled note" />
+    </div>
+    <textarea id="editor" placeholder="Start typing… (autosaves)"></textarea>
+  </main>
+
+  <!-- Status bar -->
+  <footer class="status" id="status">
+    <span class="tag" id="statSaved">Saved</span>
+    <span class="tag" id="statCounts">0 lines · 0 words · 0 chars</span>
+    <span class="tag" id="statCursor">Ln 1, Col 1</span>
+    <span class="tag" id="statNoteTime">—</span>
+    <span class="tag">Shortcuts: <span class="kbd">Ctrl+N</span> <span class="kbd">Ctrl+S</span> <span class="kbd">Ctrl+O</span> <span class="kbd">Ctrl+F</span> <span class="kbd">Ctrl+H</span> <span class="kbd">Ctrl+J</span></span>
+  </footer>
+</div>
+
+<!-- Replace dialog -->
+<dialog id="dlgReplace">
+  <form method="dialog">
+    <h3>Find & Replace</h3>
+    <label>Find
+      <input id="repFind" />
+    </label>
+    <label>Replace with
+      <input id="repWith" />
+    </label>
+    <label><input type="checkbox" id="repCase" /> Match case</label>
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px">
+      <button id="repOne">Replace</button>
+      <button id="repAll">Replace All</button>
+      <button value="cancel">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- About dialog -->
+<dialog id="dlgAbout">
+  <form method="dialog">
+    <h3>About & Shortcuts</h3>
+    <p>This is a self-contained offline Notepad. Notes are stored in your browser's localStorage.</p>
+    <ul>
+      <li><b>Ctrl+N</b> New note</li>
+      <li><b>Ctrl+S</b> Save as .txt</li>
+      <li><b>Ctrl+O</b> Open .txt</li>
+      <li><b>Ctrl+F</b> Find</li>
+      <li><b>Ctrl+H</b> Replace</li>
+      <li><b>Ctrl+J</b> Toggle dark/light</li>
+      <li><b>Ctrl+P</b> Print</li>
+      <li><b>Delete</b> Delete note</li>
+    </ul>
+    <div style="text-align:right; margin-top:8px">
+      <button value="ok">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function(){
+  // --- Utilities ---
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+  const nowISO = () => new Date().toISOString();
+  const debounce = (fn, ms=300) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
+  const saveBlob = (text, filename) => {
+    const blob = new Blob([text], {type:'text/plain'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  };
+  const fmtTime = iso => {
+    try{
+      const d = new Date(iso);
+      return d.toLocaleString();
+    }catch{ return '—'; }
+  };
+
+  // --- State ---
+  const LS_NOTES = 'notepad.notes.v1';
+  const LS_ACTIVE = 'notepad.active';
+  const LS_THEME  = 'notepad.theme';
+  let state = {
+    notes: {}, // id -> {id, title, content, updated}
+    order: [], // array of ids
+    active: null,
+    dirty: false,
+    lastSearch: ''
+  };
+
+  // --- DOM refs ---
+  const elList = $('#notesList');
+  const elEditor = $('#editor');
+  const elTitle = $('#title');
+  const elSaved = $('#statSaved');
+  const elCounts = $('#statCounts');
+  const elCursor = $('#statCursor');
+  const elNoteTime = $('#statNoteTime');
+  const elFind = $('#findInput');
+  const elFilter = $('#filterNotes');
+
+  const dlgReplace = $('#dlgReplace');
+  const repFind = $('#repFind');
+  const repWith = $('#repWith');
+  const repCase = $('#repCase');
+
+  // NEW: for Save As (kept separate; no other behavior changed)
+  let fileHandle = null;
+
+  // --- Theme ---
+  const app = $('#app');
+  function applyTheme(t){ app.setAttribute('data-theme', t==='light'?'light':'dark'); localStorage.setItem(LS_THEME, t); }
+  applyTheme(localStorage.getItem(LS_THEME) || 'dark');
+  $('#btnTheme').addEventListener('click', ()=> applyTheme(app.getAttribute('data-theme')==='dark'?'light':'dark'));
+
+  // --- Storage ---
+  function loadAll(){
+    try{
+      const raw = localStorage.getItem(LS_NOTES);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        state.notes = parsed.notes||{};
+        state.order = parsed.order||Object.keys(state.notes);
+      }
+      state.active = localStorage.getItem(LS_ACTIVE) || null;
+    }catch(e){ console.error(e); }
+    if(!state.order.length) createNote();
+    if(!state.active) state.active = state.order[0];
+    renderList(); openNote(state.active);
+  }
+  function persist(){
+    localStorage.setItem(LS_NOTES, JSON.stringify({notes:state.notes, order:state.order}));
+    if(state.active) localStorage.setItem(LS_ACTIVE, state.active);
+  }
+
+  // --- Notes operations ---
+  function createId(){ return 'n_'+Math.random().toString(36).slice(2,10); }
+  function createNote(){
+    const id = createId();
+    state.notes[id] = { id, title:'Untitled', content:'', updated: nowISO() };
+    state.order.unshift(id);
+    state.active = id;
+    persist(); renderList(); openNote(id, true);
+  }
+  function deleteNote(id){
+    if(!id) return;
+    const idx = state.order.indexOf(id);
+    if(idx>=0) state.order.splice(idx,1);
+    delete state.notes[id];
+    if(state.active === id) state.active = state.order[0] || null;
+    persist(); renderList();
+    if(state.active) openNote(state.active, true);
+    else { elTitle.value=''; elEditor.value=''; updateStatus(); }
+  }
+  function openNote(id, focusEditor=false){
+    const n = state.notes[id]; if(!n) return;
+    state.active = id;
+    elTitle.value = n.title;
+    elEditor.value = n.content;
+    state.dirty = false;
+    updateStatus();
+    highlightActive();
+    if(focusEditor) elEditor.focus();
+    persist();
+  }
+  function updateActiveNote({title, content}){
+    const n = state.notes[state.active]; if(!n) return;
+    if(typeof title==='string') n.title = title;
+    if(typeof content==='string') n.content = content;
+    n.updated = nowISO();
+    persist();
+    renderListMeta(n.id);
+  }
+
+  // --- Rendering ---
+  function renderList(filter=''){
+    elList.innerHTML = '';
+    const q = filter.trim().toLowerCase();
+    for(const id of state.order){
+      const n = state.notes[id]; if(!n) continue;
+      if(q && !(n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q))) continue;
+      const li = document.createElement('li'); li.dataset.id=id;
+      li.innerHTML = `
+        <div>
+          <div class="note-title" title="${escapeHtml(n.title)}">${escapeHtml(n.title || 'Untitled')}</div>
+          <div class="note-meta">${fmtTime(n.updated)}</div>
+        </div>
+        <div class="row">
+          <button data-act="rename" title="Rename">✎</button>
+          <button data-act="del" title="Delete">🗑</button>
+        </div>`;
+      elList.appendChild(li);
+    }
+    highlightActive();
+  }
+  function renderListMeta(id){
+    const n = state.notes[id];
+    const li = $(`.notes li[data-id="${id}"]`);
+    if(li && n){
+      li.querySelector('.note-title').textContent = n.title || 'Untitled';
+      li.querySelector('.note-meta').textContent = fmtTime(n.updated);
+    }
+  }
+  function highlightActive(){
+    $$('.notes li').forEach(li => li.classList.toggle('active', li.dataset.id===state.active));
+  }
+  function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // --- Status / counts ---
+  function countStats(text){
+    const lines = text.split(/\r?\n/).length;
+    const words = (text.trim().match(/\S+/g)||[]).length;
+    const chars = text.length;
+    return {lines, words, chars};
+  }
+  function getCursorPos(){
+    const start = elEditor.selectionStart || 0;
+    const upto = elEditor.value.slice(0, start);
+    const lines = upto.split(/\r?\n/);
+    const ln = lines.length;
+    const col = lines[lines.length-1].length + 1;
+    return {ln, col};
+  }
+  function updateStatus(){
+    const {lines, words, chars} = countStats(elEditor.value);
+    elCounts.textContent = `${lines} lines · ${words} words · ${chars} chars`;
+    const {ln,col} = getCursorPos();
+    elCursor.textContent = `Ln ${ln}, Col ${col}`;
+    const n = state.notes[state.active];
+    elNoteTime.textContent = n ? `Updated ${fmtTime(n.updated)}` : '—';
+    elSaved.textContent = state.dirty ? 'Editing…' : 'Saved';
+  }
+
+  // --- Autosave (debounced) ---
+  const doAutosave = debounce(()=>{
+    updateActiveNote({content: elEditor.value});
+    state.dirty = false; updateStatus();
+  }, 400);
+
+  // --- Find / Replace ---
+  let lastFindIndex = -1;
+  function findNext(dir=1){
+    const needle = elFind.value;
+    if(!needle) return;
+    const hay = elEditor.value;
+    const start = (lastFindIndex>=0) ? lastFindIndex + dir : (dir>0 ? elEditor.selectionEnd : elEditor.selectionStart - 1);
+    let idx = dir>0 ? hay.indexOf(needle, start) : hay.lastIndexOf(needle, start);
+    if(idx === -1){ // wrap
+      idx = dir>0 ? hay.indexOf(needle, 0) : hay.lastIndexOf(needle);
+    }
+    if(idx >= 0){
+      lastFindIndex = idx;
+      elEditor.focus();
+      elEditor.setSelectionRange(idx, idx+needle.length);
+      updateStatus();
+    }
+  }
+  function clearSearch(){ elFind.value=''; lastFindIndex=-1; elEditor.focus(); }
+
+  function replaceDialog(){
+    repFind.value = elFind.value || state.lastSearch || '';
+    repWith.value = '';
+    repCase.checked = false;
+    dlgReplace.showModal();
+    repFind.focus();
+  }
+  function replaceOne(){
+    const needle = repFind.value;
+    if(!needle) return;
+    const flags = repCase.checked ? 'g' : 'gi';
+    const selStart = elEditor.selectionStart, selEnd = elEditor.selectionEnd;
+    const txt = elEditor.value;
+    if(selEnd>selStart && txt.slice(selStart, selEnd).match(new RegExp(needle, flags))){
+      elEditor.setRangeText(repWith.value, selStart, selEnd, 'end');
+    }else{
+      const idx = txt.indexOf(needle, elEditor.selectionEnd);
+      if(idx>=0) elEditor.setSelectionRange(idx, idx+needle.length);
+    }
+    state.dirty = true; updateActiveNote({content:elEditor.value}); updateStatus();
+  }
+  function replaceAll(){
+    const needle = repFind.value;
+    if(!needle) return;
+    const re = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), repCase.checked?'g':'gi');
+    elEditor.value = elEditor.value.replace(re, repWith.value);
+    state.dirty = true; updateActiveNote({content:elEditor.value}); updateStatus();
+  }
+
+  // --- File IO ---
+  $('#btnOpen').addEventListener('click', ()=> $('#fileOpen').click());
+  $('#fileOpen').addEventListener('change', async e=>{
+    const f = e.target.files[0]; if(!f) return;
+    const text = await f.text();
+    createNote();
+    const name = (f.name||'').replace(/\.txt$/i,'') || 'Imported';
+    elTitle.value = name; elEditor.value = text;
+    updateActiveNote({title:name, content:text}); updateStatus();
+    e.target.value = '';
+  });
+
+  // Existing Save (download as .txt) — unchanged
+  $('#btnSaveFile').addEventListener('click', ()=>{
+    const n = state.notes[state.active]; if(!n) return;
+    const name = (n.title || 'note').replace(/[\\/:*?"<>|]+/g,'_') + '.txt';
+    saveBlob(elEditor.value, name);
+  });
+
+  // NEW: Save As — opens native file picker (fallbacks to download if unsupported). Does NOT change Save behavior.
+  async function saveAsNative(){
+    try{
+      const n = state.notes[state.active]; if(!n) return;
+      const suggested = (n.title || 'note').replace(/[\\/:*?"<>|]+/g,'_') + '.txt';
+      if(!('showSaveFilePicker' in window)){
+        // Fallback: same as existing Save
+        saveBlob(elEditor.value, suggested);
+        return;
+      }
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName: suggested,
+        types: [{ description: 'Text Files', accept: {'text/plain': ['.txt']} }]
+      });
+      const writable = await fileHandle.createWritable();
+      await writable.write(elEditor.value);
+      await writable.close();
+    }catch(err){
+      if(err && err.name !== 'AbortError') alert('Save As failed: ' + err.message);
+    }
+  }
+  $('#btnSaveAs').addEventListener('click', saveAsNative);
+
+  // Export/Import all notes (.json)
+  $('#btnExportAll').addEventListener('click', ()=>{
+    const payload = JSON.stringify({notes:state.notes, order:state.order}, null, 2);
+    saveBlob(payload, 'notes-export.json');
+  });
+  $('#btnImportAll').addEventListener('click', ()=> $('#fileImport').click());
+  $('#fileImport').addEventListener('change', async e=>{
+    const f = e.target.files[0]; if(!f) return;
+    try{
+      const data = JSON.parse(await f.text());
+      // merge
+      for(const id of (data.order||[]).reverse()){ // keep source order to front
+        if(!data.notes[id]) continue;
+        const nid = createId();
+        state.notes[nid] = { ...data.notes[id], id: nid, updated: nowISO() };
+        state.order.unshift(nid);
+      }
+      persist(); renderList(); if(state.order.length) openNote(state.order[0], true);
+    }catch(err){ alert('Invalid JSON export'); }
+    e.target.value='';
+  });
+
+  // Print
+  $('#btnPrint').addEventListener('click', ()=> window.print());
+
+  // --- Events: list interactions ---
+  elList.addEventListener('click', e=>{
+    const li = e.target.closest('li'); if(!li) return;
+    const id = li.dataset.id;
+    if(e.target.dataset.act === 'del'){ if(confirm('Delete this note?')) deleteNote(id); return; }
+    if(e.target.dataset.act === 'rename'){
+      const n = state.notes[id]; if(!n) return;
+      const t = prompt('Rename note:', n.title || 'Untitled');
+      if(t !== null){ n.title = t.trim() || 'Untitled'; n.updated = nowISO(); persist(); renderListMeta(id); if(id===state.active) elTitle.value=n.title; }
+      return;
+    }
+    openNote(id);
+  });
+
+  // Filter sidebar list
+  elFilter.addEventListener('input', e=> renderList(e.target.value));
+  $('#btnAddNote').addEventListener('click', createNote);
+
+  // --- Editor & Title events ---
+  elEditor.addEventListener('input', ()=>{
+    state.dirty = true; updateStatus(); doAutosave();
+  });
+  elEditor.addEventListener('click', updateStatus);
+  elEditor.addEventListener('keyup', updateStatus);
+  elTitle.addEventListener('input', debounce(()=>{
+    updateActiveNote({title: elTitle.value.trim() || 'Untitled'});
+    updateStatus();
+  }, 200));
+
+  // --- Toolbar buttons ---
+  $('#btnNew').addEventListener('click', createNote);
+  $('#btnDelete').addEventListener('click', ()=> state.active && confirm('Delete this note?') && deleteNote(state.active));
+  $('#btnAbout').addEventListener('click', ()=> $('#dlgAbout').showModal());
+
+  // --- Search bar ---
+  elFind.addEventListener('input', ()=> { state.lastSearch = elFind.value; lastFindIndex=-1; });
+  $('#btnFindNext').addEventListener('click', ()=> findNext(+1));
+  $('#btnFindPrev').addEventListener('click', ()=> findNext(-1));
+  $('#btnReplace').addEventListener('click', replaceDialog);
+  $('#btnClearSearch').addEventListener('click', clearSearch);
+
+  // --- Replace dialog buttons ---
+  $('#repOne').addEventListener('click', e=>{ e.preventDefault(); replaceOne(); });
+  $('#repAll').addEventListener('click', e=>{ e.preventDefault(); replaceAll(); });
+
+  // --- Keyboard shortcuts ---
+  window.addEventListener('keydown', e=>{
+    if(e.target.matches('input, textarea')) {
+      // allow default in fields, except our combos
+    }
+    const mod = e.ctrlKey || e.metaKey;
+    if(mod && e.key.toLowerCase()==='s'){ e.preventDefault(); $('#btnSaveFile').click(); }
+    else if(mod && e.key.toLowerCase()==='n'){ e.preventDefault(); createNote(); }
+    else if(mod && e.key.toLowerCase()==='o'){ e.preventDefault(); $('#btnOpen').click(); }
+    else if(mod && e.key.toLowerCase()==='f'){ e.preventDefault(); $('#findInput').focus(); }
+    else if(mod && e.key.toLowerCase()==='h'){ e.preventDefault(); replaceDialog(); }
+    else if(mod && e.key.toLowerCase()==='j'){ e.preventDefault(); $('#btnTheme').click(); }
+    else if(mod && e.key.toLowerCase()==='p'){ e.preventDefault(); $('#btnPrint').click(); }
+    else if(e.key==='Delete' && document.activeElement!==elEditor && document.activeElement!==elTitle){ e.preventDefault(); $('#btnDelete').click(); }
+  });
+
+  // --- Init ---
+  loadAll();
+
+})();
+</script>
+</body>
+</html>
