@@ -73,7 +73,9 @@
   .notes{list-style:none; margin:0; padding:6px}
   .notes li{
     display:grid; grid-template-columns: 1fr auto; gap:8px; padding:10px; margin:6px 0; border:1px solid var(--border); border-radius:8px; cursor:pointer;
+    transition: background-color 0.2s;
   }
+  .notes li:hover {background-color: var(--btn-hover);}
   .notes li.active{outline:2px solid var(--accent)}
   .note-title{font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .note-meta{font-size:12px; color:var(--muted)}
@@ -133,6 +135,34 @@
     background: #14532d;
     color: white;
   }
+  .keyfile-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--btn);
+    font-size: 12px;
+  }
+  .keyfile-status.loaded {
+    background: #14532d;
+    color: white;
+  }
+  .keyfile-status.empty {
+    background: #7f1d1d;
+    color: white;
+  }
+  .keyfile-paste {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .keyfile-paste textarea {
+    min-height: 80px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+  }
   @media (max-width: 900px){
     .app{grid-template-columns: 1fr; grid-template-areas:
       "toolbar" "editor" "status";}
@@ -167,6 +197,7 @@
       <button id="btnClearSearch">✕</button>
     </div>
     <div class="group">
+      <button id="btnKeyFile" title="Load key file for encryption">🔑 Key File</button>
       <button id="btnEncrypt" title="Encrypt current note">🔒 Encrypt</button>
       <button id="btnDecrypt" title="Decrypt current note">🔓 Decrypt</button>
       <button id="btnTheme" title="Toggle theme (Ctrl+J)">Theme</button>
@@ -198,15 +229,45 @@
     <span class="tag" id="statCursor">Ln 1, Col 1</span>
     <span class="tag" id="statNoteTime">—</span>
     <span class="encryption-status" id="encryptionStatus">Unencrypted</span>
-    <span class="tag">Shortcuts: <span class="kbd">Ctrl+N</span> <span class="kbd">Ctrl+S</span> <span class="kbd">Ctrl+O</span> <span class="kbd">Ctrl+F</span> <span class="kbd">Ctrl+H</span> <span class="kbd">Ctrl+J</span></span>
+    <span class="keyfile-status empty" id="keyfileStatus">No Key File</span>
+    <span class="tag">Shortcuts: <span class="kbd">Ctrl+N</span> <span class="kbd">Ctrl+S</span> <span class="kbd">Ctrl+O</span> <span class="kbd">Ctrl+F</span> <span class-kbd>Ctrl+H</span> <span class="kbd">Ctrl+J</span></span>
   </footer>
 </div>
+
+<!-- Key file dialog -->
+<dialog id="dlgKeyFile">
+  <form method="dialog" class="encryption-dialog">
+    <h3>Key File</h3>
+    <p>Load a key file to use for encryption/decryption. You can either upload a file or paste the key content directly.</p>
+    
+    <label>Upload Key File
+      <input type="file" id="keyFileUpload" accept=".key,.txt,text/plain" />
+    </label>
+    
+    <div class="keyfile-paste">
+      <label>Or paste key content directly
+        <textarea id="keyFilePaste" placeholder="Paste your key content here..."></textarea>
+      </label>
+      <button id="btnUsePastedKey">Use Pasted Key</button>
+    </div>
+    
+    <div id="currentKeyInfo" style="margin-top: 12px; padding: 8px; background: var(--input-bg); border-radius: 8px; display: none;">
+      <h4>Current Key Info</h4>
+      <p id="keyInfoText">No key loaded</p>
+    </div>
+    
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px">
+      <button id="btnClearKeyFile" class="danger">Clear Key</button>
+      <button value="cancel">Close</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- Encryption dialog -->
 <dialog id="dlgEncrypt">
   <form method="dialog" class="encryption-dialog">
     <h3>Encrypt Note</h3>
-    <p>Enter a password to encrypt this note</p>
+    <p id="encryptDialogMessage">Enter a password to encrypt this note</p>
     <label>Password
       <input type="password" id="encryptPassword" autocomplete="new-password" />
     </label>
@@ -224,7 +285,7 @@
 <dialog id="dlgDecrypt">
   <form method="dialog" class="encryption-dialog">
     <h3>Decrypt Note</h3>
-    <p>Enter the password to decrypt this note</p>
+    <p id="decryptDialogMessage">Enter the password to decrypt this note</p>
     <label>Password
       <input type="password" id="decryptPassword" autocomplete="current-password" />
     </label>
@@ -261,6 +322,7 @@
     <p>This is a self-contained offline Notepad. Notes are stored in your browser's localStorage.</p>
     <ul>
       <li><b>Encryption:</b> Uses AES-GCM with keys derived from your password using Argon2id</li>
+      <li><b>Key File Security:</b> Optionally uses a key file for enhanced key derivation</li>
       <li><b>Ctrl+N</b> New note</li>
       <li><b>Ctrl+S</b> Save as .txt</li>
       <li><b>Ctrl+O</b> Open .txt</li>
@@ -310,12 +372,14 @@
   const LS_NOTES = 'notepad.notes.v1';
   const LS_ACTIVE = 'notepad.active';
   const LS_THEME  = 'notepad.theme';
+  const LS_KEY_FILE = 'notepad.key_file';
   let state = {
     notes: {}, // id -> {id, title, content, updated, encrypted}
     order: [], // array of ids
     active: null,
     dirty: false,
-    lastSearch: ''
+    lastSearch: '',
+    keyFileContent: localStorage.getItem(LS_KEY_FILE) || null
   };
 
   // --- DOM refs ---
@@ -329,7 +393,15 @@
   const elFind = $('#findInput');
   const elFilter = $('#filterNotes');
   const elEncryptionStatus = $('#encryptionStatus');
+  const elKeyfileStatus = $('#keyfileStatus');
+  const encryptDialogMessage = $('#encryptDialogMessage');
+  const decryptDialogMessage = $('#decryptDialogMessage');
+  const keyFileUpload = $('#keyFileUpload');
+  const keyFilePaste = $('#keyFilePaste');
+  const currentKeyInfo = $('#currentKeyInfo');
+  const keyInfoText = $('#keyInfoText');
 
+  const dlgKeyFile = $('#dlgKeyFile');
   const dlgEncrypt = $('#dlgEncrypt');
   const dlgDecrypt = $('#dlgDecrypt');
   const encryptPassword = $('#encryptPassword');
@@ -343,12 +415,55 @@
   // NEW: for Save As (kept separate; no other behavior changed)
   let fileHandle = null;
 
+  // --- Key File Functions ---
+  function showKeyFileDialog() {
+    updateKeyInfo();
+    dlgKeyFile.showModal();
+  }
+  
+  function clearKeyFile() {
+    state.keyFileContent = null;
+    localStorage.removeItem(LS_KEY_FILE);
+    updateKeyfileStatus();
+    updateKeyInfo();
+    alert('Key file cleared');
+  }
+  
+  function updateKeyfileStatus() {
+    if (state.keyFileContent) {
+      elKeyfileStatus.textContent = 'Key File: Loaded';
+      elKeyfileStatus.className = 'keyfile-status loaded';
+    } else {
+      elKeyfileStatus.textContent = 'No Key File';
+      elKeyfileStatus.className = 'keyfile-status empty';
+    }
+  }
+  
+  function updateKeyInfo() {
+    if (state.keyFileContent) {
+      currentKeyInfo.style.display = 'block';
+      const keyLength = state.keyFileContent.length;
+      const preview = state.keyFileContent.length > 50 
+        ? state.keyFileContent.substring(0, 50) + '...' 
+        : state.keyFileContent;
+      keyInfoText.textContent = `Key length: ${keyLength} characters\nPreview: ${preview}`;
+    } else {
+      currentKeyInfo.style.display = 'none';
+    }
+  }
+
   // --- Encryption Functions ---
   async function deriveKey(password) {
     try {
+      // Combine password with key file content if available
+      let combinedPassword = password;
+      if (state.keyFileContent) {
+        combinedPassword = password + state.keyFileContent;
+      }
+      
       // Use Argon2id for key derivation
       const derivedKey = await argon2.hash({
-        pass: password,
+        pass: combinedPassword,
         salt: ARGON2_SALT,
         time: ARGON2_TIME,
         mem: ARGON2_MEMORY,
@@ -394,7 +509,13 @@
       result.set(iv, 0);
       result.set(new Uint8Array(encryptedData), iv.length);
       
-      return btoa(String.fromCharCode(...result));
+      // Store key file usage flag along with encrypted data
+      const keyFileFlag = state.keyFileContent ? 1 : 0;
+      const finalResult = new Uint8Array(1 + result.length);
+      finalResult.set([keyFileFlag], 0);
+      finalResult.set(result, 1);
+      
+      return btoa(String.fromCharCode(...finalResult));
     } catch (error) {
       console.error('Encryption failed:', error);
       throw new Error('Failed to encrypt data');
@@ -406,9 +527,18 @@
       // Convert from base64 to Uint8Array
       const encryptedData = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
       
-      // Extract IV (first 12 bytes) and actual encrypted data
-      const iv = encryptedData.slice(0, 12);
-      const data = encryptedData.slice(12);
+      // Extract key file flag (first byte)
+      const keyFileFlag = encryptedData[0];
+      const requiresKeyFile = keyFileFlag === 1;
+      
+      // Check if key file is required but not loaded
+      if (requiresKeyFile && !state.keyFileContent) {
+        throw new Error('This note requires the key file for decryption');
+      }
+      
+      // Extract IV (next 12 bytes) and actual encrypted data
+      const iv = encryptedData.slice(1, 13);
+      const data = encryptedData.slice(13);
       
       const key = await deriveKey(password);
       
@@ -424,7 +554,7 @@
       return new TextDecoder().decode(decryptedData);
     } catch (error) {
       console.error('Decryption failed:', error);
-      throw new Error('Failed to decrypt data - incorrect password?');
+      throw new Error('Failed to decrypt data - incorrect password or missing key file?');
     }
   }
 
@@ -433,7 +563,7 @@
     try {
       if (!content) return false;
       const data = Uint8Array.from(atob(content), c => c.charCodeAt(0));
-      return data.length > 12; // Should have IV + at least some data
+      return data.length > 13; // Should have key file flag + IV + at least some data
     } catch (e) {
       return false;
     }
@@ -470,6 +600,7 @@
     if(!state.order.length) createNote();
     if(!state.active) state.active = state.order[0];
     renderList(); openNote(state.active);
+    updateKeyfileStatus();
   }
   function persist(){
     localStorage.setItem(LS_NOTES, JSON.stringify({notes:state.notes, order:state.order}));
@@ -714,10 +845,59 @@
   // Print
   $('#btnPrint').addEventListener('click', ()=> window.print());
 
+  // --- Key file button handler ---
+  $('#btnKeyFile').addEventListener('click', () => {
+    showKeyFileDialog();
+  });
+
+  // --- Key file upload handler ---
+  keyFileUpload.addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    try {
+      const content = await file.text();
+      state.keyFileContent = content;
+      localStorage.setItem(LS_KEY_FILE, content);
+      updateKeyfileStatus();
+      updateKeyInfo();
+      alert('Key file loaded successfully!');
+    } catch (error) {
+      alert('Failed to load key file: ' + error.message);
+    }
+  });
+
+  // --- Use pasted key handler ---
+  $('#btnUsePastedKey').addEventListener('click', () => {
+    const keyContent = keyFilePaste.value.trim();
+    if (!keyContent) {
+      alert('Please paste some key content');
+      return;
+    }
+    
+    state.keyFileContent = keyContent;
+    localStorage.setItem(LS_KEY_FILE, keyContent);
+    updateKeyfileStatus();
+    updateKeyInfo();
+    alert('Key content saved successfully!');
+  });
+
+  // --- Clear key file handler ---
+  $('#btnClearKeyFile').addEventListener('click', () => {
+    clearKeyFile();
+  });
+
   // --- Encryption handlers ---
   $('#btnEncrypt').addEventListener('click', () => {
     const n = state.notes[state.active];
     if (!n) return;
+    
+    // Update dialog message based on key file status
+    if (state.keyFileContent) {
+      encryptDialogMessage.textContent = 'Enter a password to encrypt this note. Your key file will be used for additional security.';
+    } else {
+      encryptDialogMessage.textContent = 'Enter a password to encrypt this note. For enhanced security, load a key file first.';
+    }
     
     // Check if already encrypted
     if (n.encrypted || isEncrypted(n.content)) {
@@ -737,6 +917,13 @@
     if (!n.encrypted && !isEncrypted(n.content)) {
       alert('This note is not encrypted.');
       return;
+    }
+    
+    // Update dialog message based on key file status
+    if (state.keyFileContent) {
+      decryptDialogMessage.textContent = 'Enter the password to decrypt this note. Your key file is loaded and will be used for decryption.';
+    } else {
+      decryptDialogMessage.textContent = 'Enter the password to decrypt this note. If this note was encrypted with a key file, please load it first.';
     }
     
     showDecryptDialog();
@@ -785,7 +972,7 @@
       updateEncryptionStatus();
       
       dlgEncrypt.close();
-      alert('Note encrypted successfully! You can now copy the encrypted content.');
+      alert('Note encrypted successfully!' + (state.keyFileContent ? ' Your key file was used for enhanced security.' : ''));
     } catch (error) {
       alert('Encryption failed: ' + error.message);
     }
