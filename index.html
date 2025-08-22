@@ -362,9 +362,9 @@
   };
 
   // --- Encryption Constants ---
-  const ARGON2_SALT = new Uint8Array([110, 111, 116, 101, 112, 97, 100, 45, 115, 97, 108, 116]); // "notepad-salt" as bytes
+  const ARGON2_SALT = crypto.getRandomValues(new Uint8Array(16)); // 16 random bytes
   const ARGON2_TIME = 3;
-  const ARGON2_MEMORY = 65536; // 64MB
+  const ARGON2_MEMORY = 262144; // 256MB
   const ARGON2_PARALLELISM = 1;
   const ARGON2_HASH_LEN = 32;
 
