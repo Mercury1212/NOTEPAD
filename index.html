@@ -43,7 +43,7 @@
   /* Toolbar */
   .toolbar{
     grid-area:toolbar; display:flex; gap:8px; align-items:center; padding:8px; border-bottom:1px solid var(--border);
-    background:var(--panel); /* Changed from gradient to solid color */
+    background:var(--panel);
     position:sticky; top:0; z-index:2;
   }
   .toolbar .group{display:flex; gap:6px; align-items:center}
@@ -80,7 +80,7 @@
   .notes .row{display:flex; gap:6px}
   /* Editor */
   .editor{
-    grid-area:editor; display:flex; flex-direction:column; height:100%; background:var(--panel); /* Added background */
+    grid-area:editor; display:flex; flex-direction:column; height:100%; background:var(--panel);
   }
   .titlebar{display:flex; gap:8px; align-items:center; padding:10px; border-bottom:1px solid var(--border); background:var(--panel);}
   .titlebar input{
@@ -95,9 +95,9 @@
   /* Status bar */
   .status{
     grid-area:status; display:flex; gap:16px; align-items:center; border-top:1px solid var(--border); padding:4px 10px; color:var(--muted);
-    overflow:auto; white-space:nowrap; background:var(--panel); /* Added background */
+    overflow:auto; white-space:nowrap; background:var(--panel);
   }
-  .tag{padding:2px 8px; border:1px solid var(--border); border-radius:999px; background:var(--input-bg); /* Added background */}
+  .tag{padding:2px 8px; border:1px solid var(--border); border-radius:999px; background:var(--input-bg);}
   /* Dialogs */
   dialog{
     border:1px solid var(--border); border-radius:12px; background:var(--panel); color:var(--text);
@@ -108,6 +108,31 @@
     background:var(--input-bg); border:1px solid var(--border); color:var(--text); padding:8px; border-radius:8px
   }
   .kbd{border:1px solid var(--border); border-radius:6px; padding:2px 6px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:var(--input-bg);}
+  
+  /* Encryption UI */
+  .encryption-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .encryption-dialog label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .encryption-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--btn);
+    font-size: 12px;
+  }
+  .encryption-status.encrypted {
+    background: #14532d;
+    color: white;
+  }
   @media (max-width: 900px){
     .app{grid-template-columns: 1fr; grid-template-areas:
       "toolbar" "editor" "status";}
@@ -128,7 +153,6 @@
       <button id="btnOpen" title="Open .txt">Open</button>
       <input id="fileOpen" type="file" accept=".txt,text/plain" hidden />
       <button id="btnSaveFile" class="accent" title="Save as .txt (Ctrl+S)">Save</button>
-      <!-- NEW: Save As button (added only) -->
       <button id="btnSaveAs" title="Save As…">Save As</button>
       <button id="btnExportAll" title="Export all notes (.json)">Export All</button>
       <button id="btnImportAll" title="Import notes (.json)">Import</button>
@@ -143,6 +167,8 @@
       <button id="btnClearSearch">✕</button>
     </div>
     <div class="group">
+      <button id="btnEncrypt" title="Encrypt current note">🔒 Encrypt</button>
+      <button id="btnDecrypt" title="Decrypt current note">🔓 Decrypt</button>
       <button id="btnTheme" title="Toggle theme (Ctrl+J)">Theme</button>
       <button id="btnAbout" title="About & Shortcuts">?</button>
     </div>
@@ -171,9 +197,43 @@
     <span class="tag" id="statCounts">0 lines · 0 words · 0 chars</span>
     <span class="tag" id="statCursor">Ln 1, Col 1</span>
     <span class="tag" id="statNoteTime">—</span>
+    <span class="encryption-status" id="encryptionStatus">Unencrypted</span>
     <span class="tag">Shortcuts: <span class="kbd">Ctrl+N</span> <span class="kbd">Ctrl+S</span> <span class="kbd">Ctrl+O</span> <span class="kbd">Ctrl+F</span> <span class="kbd">Ctrl+H</span> <span class="kbd">Ctrl+J</span></span>
   </footer>
 </div>
+
+<!-- Encryption dialog -->
+<dialog id="dlgEncrypt">
+  <form method="dialog" class="encryption-dialog">
+    <h3>Encrypt Note</h3>
+    <p>Enter a password to encrypt this note</p>
+    <label>Password
+      <input type="password" id="encryptPassword" autocomplete="new-password" />
+    </label>
+    <label>Confirm Password
+      <input type="password" id="encryptPasswordConfirm" autocomplete="new-password" />
+    </label>
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px">
+      <button id="btnSubmitEncrypt" value="submit">Encrypt</button>
+      <button value="cancel">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Decryption dialog -->
+<dialog id="dlgDecrypt">
+  <form method="dialog" class="encryption-dialog">
+    <h3>Decrypt Note</h3>
+    <p>Enter the password to decrypt this note</p>
+    <label>Password
+      <input type="password" id="decryptPassword" autocomplete="current-password" />
+    </label>
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px">
+      <button id="btnSubmitDecrypt" value="submit">Decrypt</button>
+      <button value="cancel">Cancel</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- Replace dialog -->
 <dialog id="dlgReplace">
@@ -200,6 +260,7 @@
     <h3>About & Shortcuts</h3>
     <p>This is a self-contained offline Notepad. Notes are stored in your browser's localStorage.</p>
     <ul>
+      <li><b>Encryption:</b> Uses AES-GCM with keys derived from your password using Argon2id</li>
       <li><b>Ctrl+N</b> New note</li>
       <li><b>Ctrl+S</b> Save as .txt</li>
       <li><b>Ctrl+O</b> Open .txt</li>
@@ -214,6 +275,9 @@
     </div>
   </form>
 </dialog>
+
+<!-- Load Argon2 implementation from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/argon2-browser@1.18.0/dist/argon2-bundled.min.js"></script>
 
 <script>
 (function(){
@@ -235,12 +299,19 @@
     }catch{ return '—'; }
   };
 
+  // --- Encryption Constants ---
+  const ARGON2_SALT = new Uint8Array([110, 111, 116, 101, 112, 97, 100, 45, 115, 97, 108, 116]); // "notepad-salt" as bytes
+  const ARGON2_TIME = 3;
+  const ARGON2_MEMORY = 65536; // 64MB
+  const ARGON2_PARALLELISM = 1;
+  const ARGON2_HASH_LEN = 32;
+
   // --- State ---
   const LS_NOTES = 'notepad.notes.v1';
   const LS_ACTIVE = 'notepad.active';
   const LS_THEME  = 'notepad.theme';
   let state = {
-    notes: {}, // id -> {id, title, content, updated}
+    notes: {}, // id -> {id, title, content, updated, encrypted}
     order: [], // array of ids
     active: null,
     dirty: false,
@@ -257,7 +328,13 @@
   const elNoteTime = $('#statNoteTime');
   const elFind = $('#findInput');
   const elFilter = $('#filterNotes');
+  const elEncryptionStatus = $('#encryptionStatus');
 
+  const dlgEncrypt = $('#dlgEncrypt');
+  const dlgDecrypt = $('#dlgDecrypt');
+  const encryptPassword = $('#encryptPassword');
+  const encryptPasswordConfirm = $('#encryptPasswordConfirm');
+  const decryptPassword = $('#decryptPassword');
   const dlgReplace = $('#dlgReplace');
   const repFind = $('#repFind');
   const repWith = $('#repWith');
@@ -265,6 +342,113 @@
 
   // NEW: for Save As (kept separate; no other behavior changed)
   let fileHandle = null;
+
+  // --- Encryption Functions ---
+  async function deriveKey(password) {
+    try {
+      // Use Argon2id for key derivation
+      const derivedKey = await argon2.hash({
+        pass: password,
+        salt: ARGON2_SALT,
+        time: ARGON2_TIME,
+        mem: ARGON2_MEMORY,
+        parallelism: ARGON2_PARALLELISM,
+        hashLen: ARGON2_HASH_LEN,
+        type: argon2.ArgonType.Argon2id
+      });
+      
+      // Import the derived key for use with Web Crypto
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        derivedKey.hash,
+        { name: 'AES-GCM' },
+        false,
+        ['encrypt', 'decrypt']
+      );
+      
+      return keyMaterial;
+    } catch (error) {
+      console.error('Key derivation failed:', error);
+      throw new Error('Failed to derive encryption key');
+    }
+  }
+
+  async function encryptText(text, password) {
+    try {
+      const key = await deriveKey(password);
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      
+      const encodedData = new TextEncoder().encode(text);
+      
+      const encryptedData = await crypto.subtle.encrypt(
+        {
+          name: 'AES-GCM',
+          iv: iv
+        },
+        key,
+        encodedData
+      );
+      
+      // Combine IV and encrypted data into a single array
+      const result = new Uint8Array(iv.length + encryptedData.byteLength);
+      result.set(iv, 0);
+      result.set(new Uint8Array(encryptedData), iv.length);
+      
+      return btoa(String.fromCharCode(...result));
+    } catch (error) {
+      console.error('Encryption failed:', error);
+      throw new Error('Failed to encrypt data');
+    }
+  }
+
+  async function decryptText(encryptedBase64, password) {
+    try {
+      // Convert from base64 to Uint8Array
+      const encryptedData = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
+      
+      // Extract IV (first 12 bytes) and actual encrypted data
+      const iv = encryptedData.slice(0, 12);
+      const data = encryptedData.slice(12);
+      
+      const key = await deriveKey(password);
+      
+      const decryptedData = await crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: iv
+        },
+        key,
+        data
+      );
+      
+      return new TextDecoder().decode(decryptedData);
+    } catch (error) {
+      console.error('Decryption failed:', error);
+      throw new Error('Failed to decrypt data - incorrect password?');
+    }
+  }
+
+  function isEncrypted(content) {
+    // Simple check to see if content might be encrypted
+    try {
+      if (!content) return false;
+      const data = Uint8Array.from(atob(content), c => c.charCodeAt(0));
+      return data.length > 12; // Should have IV + at least some data
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function updateEncryptionStatus() {
+    const n = state.notes[state.active];
+    if (n && (n.encrypted || isEncrypted(n.content))) {
+      elEncryptionStatus.textContent = '🔒 Encrypted';
+      elEncryptionStatus.className = 'encryption-status encrypted';
+    } else {
+      elEncryptionStatus.textContent = 'Unencrypted';
+      elEncryptionStatus.className = 'encryption-status';
+    }
+  }
 
   // --- Theme ---
   const app = $('#app');
@@ -296,7 +480,7 @@
   function createId(){ return 'n_'+Math.random().toString(36).slice(2,10); }
   function createNote(){
     const id = createId();
-    state.notes[id] = { id, title:'Untitled', content:'', updated: nowISO() };
+    state.notes[id] = { id, title:'Untitled', content:'', updated: nowISO(), encrypted: false };
     state.order.unshift(id);
     state.active = id;
     persist(); renderList(); openNote(id, true);
@@ -315,9 +499,19 @@
     const n = state.notes[id]; if(!n) return;
     state.active = id;
     elTitle.value = n.title;
-    elEditor.value = n.content;
+    
+    // Check if content is encrypted - show the Base64 content directly
+    if (n.encrypted || isEncrypted(n.content)) {
+      elEditor.value = n.content;
+      elEditor.readOnly = true;
+    } else {
+      elEditor.value = n.content;
+      elEditor.readOnly = false;
+    }
+    
     state.dirty = false;
     updateStatus();
+    updateEncryptionStatus();
     highlightActive();
     if(focusEditor) elEditor.focus();
     persist();
@@ -329,6 +523,7 @@
     n.updated = nowISO();
     persist();
     renderListMeta(n.id);
+    updateEncryptionStatus();
   }
 
   // --- Rendering ---
@@ -339,9 +534,13 @@
       const n = state.notes[id]; if(!n) continue;
       if(q && !(n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q))) continue;
       const li = document.createElement('li'); li.dataset.id=id;
+      
+      // Add lock icon for encrypted notes
+      const lockIcon = n.encrypted || isEncrypted(n.content) ? '🔒 ' : '';
+      
       li.innerHTML = `
         <div>
-          <div class="note-title" title="${escapeHtml(n.title)}">${escapeHtml(n.title || 'Untitled')}</div>
+          <div class="note-title" title="${escapeHtml(n.title)}">${lockIcon}${escapeHtml(n.title || 'Untitled')}</div>
           <div class="note-meta">${fmtTime(n.updated)}</div>
         </div>
         <div class="row">
@@ -356,7 +555,8 @@
     const n = state.notes[id];
     const li = $(`.notes li[data-id="${id}"]`);
     if(li && n){
-      li.querySelector('.note-title').textContent = n.title || 'Untitled';
+      const lockIcon = n.encrypted || isEncrypted(n.content) ? '🔒 ' : '';
+      li.querySelector('.note-title').textContent = lockIcon + (n.title || 'Untitled');
       li.querySelector('.note-meta').textContent = fmtTime(n.updated);
     }
   }
@@ -381,11 +581,13 @@
     return {ln, col};
   }
   function updateStatus(){
-    const {lines, words, chars} = countStats(elEditor.value);
+    const n = state.notes[state.active];
+    let text = elEditor.value;
+    
+    const {lines, words, chars} = countStats(text);
     elCounts.textContent = `${lines} lines · ${words} words · ${chars} chars`;
     const {ln,col} = getCursorPos();
     elCursor.textContent = `Ln ${ln}, Col ${col}`;
-    const n = state.notes[state.active];
     elNoteTime.textContent = n ? `Updated ${fmtTime(n.updated)}` : '—';
     elSaved.textContent = state.dirty ? 'Editing…' : 'Saved';
   }
@@ -511,6 +713,113 @@
 
   // Print
   $('#btnPrint').addEventListener('click', ()=> window.print());
+
+  // --- Encryption handlers ---
+  $('#btnEncrypt').addEventListener('click', () => {
+    const n = state.notes[state.active];
+    if (!n) return;
+    
+    // Check if already encrypted
+    if (n.encrypted || isEncrypted(n.content)) {
+      if (confirm('This note is already encrypted. Do you want to re-encrypt it with a new password?')) {
+        showEncryptDialog();
+      }
+    } else {
+      showEncryptDialog();
+    }
+  });
+  
+  $('#btnDecrypt').addEventListener('click', () => {
+    const n = state.notes[state.active];
+    if (!n) return;
+    
+    // Check if actually encrypted
+    if (!n.encrypted && !isEncrypted(n.content)) {
+      alert('This note is not encrypted.');
+      return;
+    }
+    
+    showDecryptDialog();
+  });
+  
+  function showEncryptDialog() {
+    encryptPassword.value = '';
+    encryptPasswordConfirm.value = '';
+    dlgEncrypt.showModal();
+    encryptPassword.focus();
+  }
+  
+  function showDecryptDialog() {
+    decryptPassword.value = '';
+    dlgDecrypt.showModal();
+    decryptPassword.focus();
+  }
+  
+  $('#btnSubmitEncrypt').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const password = encryptPassword.value;
+    const passwordConfirm = encryptPasswordConfirm.value;
+    
+    if (!password) {
+      alert('Please enter a password');
+      return;
+    }
+    
+    if (password !== passwordConfirm) {
+      alert('Passwords do not match');
+      return;
+    }
+    
+    try {
+      const n = state.notes[state.active];
+      const encryptedContent = await encryptText(n.content, password);
+      n.content = encryptedContent;
+      n.encrypted = true;
+      n.updated = nowISO();
+      
+      persist();
+      renderListMeta(state.active);
+      elEditor.value = encryptedContent; // Show the Base64 encrypted content
+      elEditor.readOnly = true;
+      updateStatus();
+      updateEncryptionStatus();
+      
+      dlgEncrypt.close();
+      alert('Note encrypted successfully! You can now copy the encrypted content.');
+    } catch (error) {
+      alert('Encryption failed: ' + error.message);
+    }
+  });
+  
+  $('#btnSubmitDecrypt').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const password = decryptPassword.value;
+    
+    if (!password) {
+      alert('Please enter the password');
+      return;
+    }
+    
+    try {
+      const n = state.notes[state.active];
+      const decryptedContent = await decryptText(n.content, password);
+      n.content = decryptedContent;
+      n.encrypted = false;
+      n.updated = nowISO();
+      
+      persist();
+      renderListMeta(state.active);
+      elEditor.value = decryptedContent;
+      elEditor.readOnly = false;
+      updateStatus();
+      updateEncryptionStatus();
+      
+      dlgDecrypt.close();
+      alert('Note decrypted successfully!');
+    } catch (error) {
+      alert('Decryption failed: ' + error.message);
+    }
+  });
 
   // --- Events: list interactions ---
   elList.addEventListener('click', e=>{
