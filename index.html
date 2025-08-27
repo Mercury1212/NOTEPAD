@@ -331,7 +331,7 @@
       <li><b>Ctrl+H</b> Replace</li>
       <li><b>Ctrl+J</b> Toggle dark/light</li>
       <li><b>Ctrl+P</b> Print</li>
-      <li><b>Delete</b> Delete note</li>
+      <li><b>Delete</b> Delete note (only when editor is focused)</li>
     </ul>
     <div style="text-align:right; margin-top:8px">
       <button value="ok">Close</button>
@@ -1055,18 +1055,76 @@
 
   // --- Keyboard shortcuts ---
   window.addEventListener('keydown', e=>{
-    if(e.target.matches('input, textarea')) {
-      // allow default in fields, except our combos
+    // Check if we're in a password field or dialog input
+    const isPasswordField = e.target.matches('input[type="password"]');
+    const isDialogInput = e.target.closest('dialog') && e.target.matches('input, textarea');
+    
+    // Allow default behavior in input fields (including password fields)
+    if (e.target.matches('input, textarea') && !e.ctrlKey && !e.metaKey) {
+      return;
     }
+    
     const mod = e.ctrlKey || e.metaKey;
-    if(mod && e.key.toLowerCase()==='s'){ e.preventDefault(); $('#btnSaveFile').click(); }
-    else if(mod && e.key.toLowerCase()==='n'){ e.preventDefault(); createNote(); }
-    else if(mod && e.key.toLowerCase()==='o'){ e.preventDefault(); $('#btnOpen').click(); }
-    else if(mod && e.key.toLowerCase()==='f'){ e.preventDefault(); $('#findInput').focus(); }
-    else if(mod && e.key.toLowerCase()==='h'){ e.preventDefault(); replaceDialog(); }
-    else if(mod && e.key.toLowerCase()==='j'){ e.preventDefault(); $('#btnTheme').click(); }
-    else if(mod && e.key.toLowerCase()==='p'){ e.preventDefault(); $('#btnPrint').click(); }
-    else if(e.key==='Delete' && document.activeElement!==elEditor && document.activeElement!==elTitle){ e.preventDefault(); $('#btnDelete').click(); }
+    
+    // Don't process shortcuts if we're in a password field
+    if (isPasswordField || isDialogInput) {
+      // Only allow Ctrl shortcuts in password fields, not the Delete key
+      if (e.key === 'Delete') {
+        return; // Let the browser handle Delete in input fields
+      }
+      
+      // Allow Ctrl shortcuts even in password fields
+      if (mod && e.key.toLowerCase() === 's') {
+        e.preventDefault(); 
+        $('#btnSaveFile').click();
+      } else if (mod && e.key.toLowerCase() === 'n') {
+        e.preventDefault(); 
+        createNote();
+      } else if (mod && e.key.toLowerCase() === 'o') {
+        e.preventDefault(); 
+        $('#btnOpen').click();
+      } else if (mod && e.key.toLowerCase() === 'f') {
+        e.preventDefault(); 
+        $('#findInput').focus();
+      } else if (mod && e.key.toLowerCase() === 'h') {
+        e.preventDefault(); 
+        replaceDialog();
+      } else if (mod && e.key.toLowerCase() === 'j') {
+        e.preventDefault(); 
+        $('#btnTheme').click();
+      } else if (mod && e.key.toLowerCase() === 'p') {
+        e.preventDefault(); 
+        $('#btnPrint').click();
+      }
+      return;
+    }
+    
+    // Global shortcuts (only when not in input fields)
+    if (mod && e.key.toLowerCase() === 's') {
+      e.preventDefault(); 
+      $('#btnSaveFile').click();
+    } else if (mod && e.key.toLowerCase() === 'n') {
+      e.preventDefault(); 
+      createNote();
+    } else if (mod && e.key.toLowerCase() === 'o') {
+      e.preventDefault(); 
+      $('#btnOpen').click();
+    } else if (mod && e.key.toLowerCase() === 'f') {
+      e.preventDefault(); 
+      $('#findInput').focus();
+    } else if (mod && e.key.toLowerCase() === 'h') {
+      e.preventDefault(); 
+      replaceDialog();
+    } else if (mod && e.key.toLowerCase() === 'j') {
+      e.preventDefault(); 
+      $('#btnTheme').click();
+    } else if (mod && e.key.toLowerCase() === 'p') {
+      e.preventDefault(); 
+      $('#btnPrint').click();
+    } else if (e.key === 'Delete' && document.activeElement !== elEditor && document.activeElement !== elTitle) {
+      e.preventDefault(); 
+      $('#btnDelete').click();
+    }
   });
 
   // --- Init ---
